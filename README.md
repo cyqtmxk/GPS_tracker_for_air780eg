@@ -6,14 +6,13 @@
 服务器层 — 后端接收 MQTT 消息，解析 NMEA 格式 GPS 数据，存入 PostgreSQL（或 TimescaleDB，对时序数据更优化）。
 展示层 — 网页用 Leaflet.js 渲染轨迹地图，同时支持手机访问（PWA）。
 
-第一步：VPS 上一键安装环境
-bash# 上传 setup.sh 到 VPS，然后执行：
+第一步：VPS 上一键安装环境 上传 setup.sh 到 VPS，然后执行：
 chmod +x setup.sh
 sudo bash setup.sh
 脚本会自动安装所有组件，并在最后打印 MQTT 和数据库的账号密码，务必保存好。
 
 第二步：部署后端服务
-bash# 将 server.js 和 package.json 上传到 /opt/gps-tracker/backend/
+将 server.js 和 package.json 上传到 /opt/gps-tracker/backend/
 cd /opt/gps-tracker/backend
 npm install
 pm2 start server.js --name gps-tracker
@@ -21,7 +20,7 @@ pm2 save          # 开机自启
 pm2 startup       # 生成开机启动命令（按提示执行）
 
 第三步：配置 Nginx
-bashcp gps-tracker.nginx /etc/nginx/sites-available/gps-tracker
+cp gps-tracker.nginx /etc/nginx/sites-available/gps-tracker
 ln -s /etc/nginx/sites-available/gps-tracker /etc/nginx/sites-enabled/
 nginx -t          # 检查配置
 systemctl reload nginx
@@ -30,7 +29,8 @@ systemctl reload nginx
 把 main.lua 里 CFG 的 mqtt_host、mqtt_user、mqtt_pass 改成 setup.sh 输出的值。
 
 安装完成后，可以用以下命令验证：
-bash# 测试MQTT（需要安装mosquitto-clients）
+测试MQTT（需要安装mosquitto-clients）
+
 mosquitto_pub -h localhost -p 1883 -u gps_device -P 你的密码 \
   -t "/gps/up/test123" \
   -m '{"imei":"test123","lat":35.68,"lon":139.69,"speed":30,"ts":1714000000}'
@@ -49,9 +49,9 @@ pm2 logs gps-tracker
 cp index.html /opt/gps-tracker/frontend/index.html
 cp login.html /opt/gps-tracker/frontend/login.html
 
-cat >> /opt/gps-tracker/backend/.env << 'EOF'
-WEB_USER=你的用户名
-WEB_PASS=你的密码
+cat >> /opt/gps-tracker/backend/.env << 'EOF' \
+WEB_USER=你的用户名 \
+WEB_PASS=你的密码 \
 EOF
 
 #重启服务
