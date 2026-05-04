@@ -1,3 +1,5 @@
+<img width="635" height="560" alt="说明" src="https://github.com/user-attachments/assets/f4fc299b-72c4-47e8-8c78-f3ffdedb4823" />
+
 系统简介：
 硬件层 — Air780 模块通过 Lua 固件采集 GPS 坐标，通过 4G 网络上报数据。
 传输层 — 推荐用 MQTT 协议（省电、可靠，断网重连友好），EMQX 或 Mosquitto 部署在你的 VPS 上。
@@ -33,7 +35,7 @@ mosquitto_pub -h localhost -p 1883 -u gps_device -P 你的密码 \
   -t "/gps/up/test123" \
   -m '{"imei":"test123","lat":35.68,"lon":139.69,"speed":30,"ts":1714000000}'
 
-# 查看后端日志
+#查看日志
 pm2 logs gps-tracker
 
 第五步：申请高德地图 Key
@@ -51,14 +53,12 @@ cat >> /opt/gps-tracker/backend/.env << 'EOF'
 WEB_USER=你的用户名
 WEB_PASS=你的密码
 EOF
+#重启服务
 
-# 重启
 fuser -k 3000/tcp
 sleep 2
 pm2 delete gps-tracker
 cd /opt/gps-tracker/backend
 pm2 start server.js --name gps-tracker --update-env
-
-# 看日志
 sleep 3
 pm2 logs gps-tracker --lines 15 --nostream
