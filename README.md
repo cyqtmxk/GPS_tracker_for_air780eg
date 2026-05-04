@@ -7,23 +7,23 @@
 展示层 — 网页用 Leaflet.js 渲染轨迹地图，同时支持手机访问（PWA）。
 
 第一步：VPS 上一键安装环境 上传 setup.sh 到 VPS，然后执行：
-chmod +x setup.sh
+chmod +x setup.sh \
 sudo bash setup.sh
 脚本会自动安装所有组件，并在最后打印 MQTT 和数据库的账号密码，务必保存好。
 
 第二步：部署后端服务
 将 server.js 和 package.json 上传到 /opt/gps-tracker/backend/
-cd /opt/gps-tracker/backend
-npm install
-pm2 start server.js --name gps-tracker
-pm2 save          # 开机自启
+cd /opt/gps-tracker/backend \
+npm install \
+pm2 start server.js --name gps-tracker \
+pm2 save          # 开机自启 \
 pm2 startup       # 生成开机启动命令（按提示执行）
 
 第三步：配置 Nginx
-cp gps-tracker.nginx /etc/nginx/sites-available/gps-tracker
-ln -s /etc/nginx/sites-available/gps-tracker /etc/nginx/sites-enabled/
-nginx -t          # 检查配置
-systemctl reload nginx
+cp gps-tracker.nginx /etc/nginx/sites-available/gps-tracker \
+ln -s /etc/nginx/sites-available/gps-tracker /etc/nginx/sites-enabled/ \
+nginx -t          # 检查配置 \
+systemctl reload nginx \
 
 第四步：更新 Air780EG 固件里的 MQTT 配置
 把 main.lua 里 CFG 的 mqtt_host、mqtt_user、mqtt_pass 改成 setup.sh 输出的值。
@@ -36,7 +36,7 @@ mosquitto_pub -h localhost -p 1883 -u gps_device -P 你的密码 \
   -m '{"imei":"test123","lat":35.68,"lon":139.69,"speed":30,"ts":1714000000}'
 
 #查看日志
-pm2 logs gps-tracker
+pm2 logs gps-tracker \
 
 第五步：申请高德地图 Key
 
@@ -46,8 +46,8 @@ pm2 logs gps-tracker
 
 
 第六步：部署到 VPS
-cp index.html /opt/gps-tracker/frontend/index.html
-cp login.html /opt/gps-tracker/frontend/login.html
+cp index.html /opt/gps-tracker/frontend/index.html \
+cp login.html /opt/gps-tracker/frontend/login.html \
 
 cat >> /opt/gps-tracker/backend/.env << 'EOF' \
 WEB_USER=你的用户名 \
@@ -56,10 +56,10 @@ EOF
 
 #重启服务
 
-fuser -k 3000/tcp
-sleep 2
-pm2 delete gps-tracker
-cd /opt/gps-tracker/backend
-pm2 start server.js --name gps-tracker --update-env
-sleep 3
+fuser -k 3000/tcp \
+sleep 2 \
+pm2 delete gps-tracker \
+cd /opt/gps-tracker/backend \
+pm2 start server.js --name gps-tracker --update-env \
+sleep 3 \
 pm2 logs gps-tracker --lines 15 --nostream
