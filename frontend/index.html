@@ -1,0 +1,1570 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>GPS 轨迹追踪系统</title>
+
+<!-- 高德地图 JS API v2.0 — 替换 YOUR_AMAP_KEY 为你的Key -->
+<script src="https://webapi.amap.com/maps?v=2.0&key=YOUR_MAP_KEY&plugin=AMap.Scale,AMap.ToolBar,AMap.Geolocation"></script>
+
+<!-- Socket.IO — 连接后端实时推送 -->
+<script src="/socket.io/socket.io.js"></script>
+
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Rajdhani:wght@400;500;600;700&family=Noto+Sans+SC:wght@300;400;500;700&display=swap');
+
+:root {
+  --bg:       #090c12;
+  --panel:    #0e1220;
+  --panel2:   #141827;
+  --border:   rgba(0,200,255,0.10);
+  --accent:   #00c8ff;
+  --accent2:  #ff5f2e;
+  --green:    #00f09d;
+  --yellow:   #f0c030;
+  --text:     #dde6f0;
+  --muted:    #4e5c72;
+  --radius:   6px;
+}
+
+*, *::before, *::after { margin:0; padding:0; box-sizing:border-box; }
+
+html, body { height:100%; overflow:hidden; }
+
+body {
+  font-family: 'Noto Sans SC', sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  display: flex;
+  flex-direction: column;
+}
+
+
+/* ── 顶栏 ─────────────────────────────────────────────── */
+#topbar {
+  height:50px; flex-shrink:0;
+  background: var(--panel);
+  border-bottom: 1px solid var(--border);
+  display:flex; align-items:center;
+  padding: 0 18px; gap:18px;
+}
+.logo {
+  font-family:'Rajdhani',sans-serif;
+  font-size:17px; font-weight:700;
+  letter-spacing:3px; color:var(--accent);
+  text-transform:uppercase;
+  display:flex; align-items:center; gap:8px;
+}
+.live-dot {
+  width:7px; height:7px;
+  border-radius:50%;
+  background:var(--green);
+  box-shadow:0 0 10px var(--green);
+  animation:blink 2s infinite;
+}
+@keyframes blink { 0%,100%{opacity:1} 50%{opacity:.3} }
+
+.topbar-divider { width:1px; height:22px; background:var(--border); }
+
+.topbar-chip {
+  font-family:'Rajdhani',sans-serif;
+  font-size:11px; letter-spacing:1.5px;
+  color:var(--muted); text-transform:uppercase;
+}
+
+.topbar-right { margin-left:auto; display:flex; align-items:center; gap:14px; }
+
+.signal-indicator {
+  display:flex; align-items:flex-end; gap:2px; height:14px;
+}
+.signal-indicator span {
+  width:3px; border-radius:1px;
+  background:var(--muted);
+  transition: background .3s;
+}
+.signal-indicator span.on { background:var(--green); }
+.signal-indicator span:nth-child(1){height:4px}
+.signal-indicator span:nth-child(2){height:7px}
+.signal-indicator span:nth-child(3){height:10px}
+.signal-indicator span:nth-child(4){height:14px}
+
+#clock {
+  font-family:'Rajdhani',sans-serif;
+  font-size:14px; color:var(--muted); letter-spacing:1px;
+}
+
+/* ── 主布局 ─────────────────────────────────────────── */
+#main { flex:1; display:flex; overflow:hidden; }
+
+/* ── 左侧边栏 ───────────────────────────────────────── */
+#sidebar {
+  width:272px; flex-shrink:0;
+  background:var(--panel);
+  border-right:1px solid var(--border);
+  display:flex; flex-direction:column;
+  overflow:hidden;
+}
+
+.sec {
+  padding:12px 14px;
+  border-bottom:1px solid var(--border);
+  flex-shrink:0;
+}
+.sec-title {
+  font-family:'Rajdhani',sans-serif;
+  font-size:10px; letter-spacing:2.5px;
+  color:var(--muted); text-transform:uppercase;
+  margin-bottom:9px;
+}
+
+/* 设备卡片 */
+.device-card {
+  background:var(--panel2);
+  border:1px solid var(--border);
+  border-radius:var(--radius);
+  padding:9px 11px;
+  cursor:pointer;
+  transition: border-color .2s, background .2s;
+  margin-bottom:5px;
+}
+.device-card:last-child { margin-bottom:0; }
+.device-card.active, .device-card:hover {
+  border-color: var(--accent);
+  background: rgba(0,200,255,0.05);
+}
+.dc-head { display:flex; align-items:center; gap:9px; margin-bottom:6px; }
+.dc-icon {
+  width:30px; height:30px;
+  background:rgba(0,200,255,0.08);
+  border:1px solid rgba(0,200,255,0.2);
+  border-radius:5px;
+  display:flex; align-items:center; justify-content:center;
+  font-size:15px; flex-shrink:0;
+}
+.dc-name {
+  font-size:13px; font-weight:500;
+  display:flex; align-items:center; gap:6px;
+}
+.rename-btn {
+  display:inline-flex; align-items:center; justify-content:center;
+  width:18px; height:18px; border-radius:3px;
+  font-size:11px; color:var(--muted);
+  cursor:pointer; transition:all .15s;
+  opacity:0;
+}
+.device-card:hover .rename-btn { opacity:0.6; }
+.rename-btn:hover { opacity:1 !important; background:rgba(0,200,255,0.15); color:var(--accent); }
+.dc-imei { font-size:10px; color:var(--muted); font-family:'Rajdhani',sans-serif; }
+.dc-badge {
+  margin-left:auto; font-size:9px;
+  padding:2px 6px; border-radius:3px;
+  font-family:'Rajdhani',sans-serif; letter-spacing:1px; font-weight:600;
+}
+.badge-on  { background:rgba(0,240,157,0.12); color:var(--green);  border:1px solid rgba(0,240,157,0.25); }
+.badge-off { background:rgba(78,92,114,0.2);  color:var(--muted);  border:1px solid rgba(78,92,114,0.3); }
+.dc-metrics { display:grid; grid-template-columns:repeat(3,1fr); gap:4px; }
+.dcm { text-align:center; }
+.dcm-val { font-family:'Rajdhani',sans-serif; font-size:15px; font-weight:600; color:var(--accent); }
+.dcm-lbl { font-size:9px; color:var(--muted); }
+
+/* 时间范围选择器 */
+.range-pills { display:flex; gap:4px; }
+.rpill {
+  flex:1; padding:5px 0; text-align:center;
+  background:var(--panel2);
+  border:1px solid var(--border);
+  border-radius:4px;
+  color:var(--muted); font-size:11px;
+  font-family:'Rajdhani',sans-serif; letter-spacing:1px;
+  cursor:pointer; transition: all .2s;
+}
+.rpill.active, .rpill:hover {
+  background:rgba(0,200,255,0.1);
+  border-color:var(--accent); color:var(--accent);
+}
+
+/* 统计数字 */
+.stats-grid { display:grid; grid-template-columns:1fr 1fr; gap:6px; }
+.stat-box {
+  background:var(--panel2);
+  border:1px solid var(--border);
+  border-radius:var(--radius);
+  padding:8px 10px;
+}
+.stat-box .val {
+  font-family:'Rajdhani',sans-serif;
+  font-size:21px; font-weight:700;
+  color:var(--accent); line-height:1;
+}
+.stat-box .val.orange { color:var(--accent2); }
+.stat-box .val.green  { color:var(--green); }
+.stat-box .val.yellow { color:var(--yellow); }
+.stat-box .lbl { font-size:10px; color:var(--muted); margin-top:2px; }
+
+/* 轨迹列表 */
+#trackList {
+  flex:1; overflow-y:auto;
+  padding:8px 14px;
+}
+#trackList::-webkit-scrollbar { width:3px; }
+#trackList::-webkit-scrollbar-thumb { background:var(--border); border-radius:2px; }
+
+.titem {
+  display:flex; gap:9px;
+  padding:7px 0;
+  border-bottom:1px solid rgba(255,255,255,0.03);
+  cursor:pointer; transition:background .15s;
+  border-radius:3px;
+}
+.titem:hover { background:rgba(0,200,255,0.04); padding-left:4px; }
+.tnode { display:flex; flex-direction:column; align-items:center; padding-top:4px; }
+.tdot {
+  width:8px; height:8px; border-radius:50%;
+  background:var(--accent);
+  border:1.5px solid var(--bg); flex-shrink:0;
+  box-shadow:0 0 6px var(--accent);
+}
+.tdot.start { background:var(--green);  box-shadow:0 0 6px var(--green); }
+.tdot.end   { background:var(--accent2); box-shadow:0 0 6px var(--accent2); }
+.tseg { width:1px; flex:1; min-height:16px; background:linear-gradient(var(--accent),transparent); opacity:.25; margin-top:2px; }
+.tinfo { flex:1; }
+.ttime {
+  font-family:'Rajdhani',sans-serif;
+  font-size:12px; color:var(--accent); letter-spacing:.5px;
+}
+.tcoord { font-size:10px; color:var(--muted); margin-top:1px; font-family:'Rajdhani',sans-serif; }
+.tspeed { font-size:10px; color:var(--accent2); margin-top:2px; }
+
+/* 空状态 */
+.empty-state {
+  text-align:center; padding:40px 20px;
+  color:var(--muted); font-size:12px; line-height:1.8;
+}
+.empty-icon { font-size:32px; margin-bottom:8px; opacity:.5; }
+
+/* ── 地图区域 ────────────────────────────────────────── */
+#mapWrap {
+  flex:1; position:relative; overflow:hidden;
+}
+#amap { width:100%; height:100%; }
+
+/* 地图覆盖层控件 */
+.map-overlay {
+  position:absolute; z-index:200;
+  pointer-events:none;
+}
+.map-overlay.interactive { pointer-events:auto; }
+
+/* 顶部控件条 */
+#mapCtrl {
+  top:14px; left:50%; transform:translateX(-50%);
+  background:var(--panel);
+  border:1px solid var(--border);
+  border-radius:6px;
+  padding:4px 6px;
+  display:flex; gap:4px;
+}
+.mctrl-btn {
+  padding:4px 12px;
+  border-radius:4px;
+  font-size:11px;
+  font-family:'Rajdhani',sans-serif; letter-spacing:1px;
+  cursor:pointer; border:none;
+  background:transparent; color:var(--muted);
+  transition: all .2s;
+}
+.mctrl-btn.active, .mctrl-btn:hover {
+  background:rgba(0,200,255,0.12); color:var(--accent);
+}
+
+/* 右上角信号/状态 */
+#mapStatus {
+  top:14px; right:14px;
+  background:var(--panel);
+  border:1px solid var(--border);
+  border-radius:5px;
+  padding:5px 11px;
+  font-family:'Rajdhani',sans-serif;
+  font-size:11px; color:var(--muted);
+  display:flex; align-items:center; gap:8px;
+}
+.ws-dot {
+  width:6px; height:6px; border-radius:50%;
+  background:var(--muted);
+  transition: background .3s;
+}
+.ws-dot.connected { background:var(--green); box-shadow:0 0 6px var(--green); }
+
+/* 速度仪 */
+#speedoWrap {
+  right:14px; bottom:50px;
+  background:var(--panel);
+  border:1px solid var(--border);
+  border-radius:var(--radius);
+  padding:10px 14px; text-align:center;
+  min-width:90px;
+}
+#speedVal {
+  font-family:'Rajdhani',sans-serif;
+  font-size:34px; font-weight:700;
+  color:var(--accent); line-height:1;
+  transition: color .5s;
+}
+.speed-unit { font-size:10px; color:var(--muted); font-family:'Rajdhani',sans-serif; letter-spacing:1px; margin-top:2px; }
+.speed-gauge {
+  width:100%; height:3px;
+  background:rgba(255,255,255,0.05);
+  border-radius:2px; margin-top:7px; overflow:hidden;
+}
+.speed-gauge-fill {
+  height:100%; width:0%;
+  background:linear-gradient(90deg, var(--accent), var(--accent2));
+  border-radius:2px;
+  transition: width .8s ease;
+}
+
+/* 坐标条 */
+#coordBar {
+  left:14px; bottom:50px;
+  background:var(--panel);
+  border:1px solid var(--border);
+  border-radius:5px;
+  padding:6px 12px;
+  font-family:'Rajdhani',sans-serif;
+  font-size:11px; color:var(--muted);
+}
+#coordBar span { color:var(--accent); }
+
+/* 右下工具按钮 */
+#mapTools {
+  right:14px; bottom:160px;
+  display:flex; flex-direction:column; gap:5px;
+}
+.tool-btn {
+  width:34px; height:34px;
+  background:var(--panel);
+  border:1px solid var(--border);
+  border-radius:5px;
+  display:flex; align-items:center; justify-content:center;
+  cursor:pointer; font-size:14px; color:var(--muted);
+  transition: all .2s; user-select:none;
+}
+.tool-btn:hover {
+  border-color:var(--accent); color:var(--accent);
+  background:rgba(0,200,255,0.08);
+}
+
+/* Toast 通知 */
+#toast {
+  bottom:80px; left:50%; transform:translateX(-50%);
+  background:var(--panel2);
+  border:1px solid var(--border);
+  border-radius:5px;
+  padding:8px 16px;
+  font-size:12px; color:var(--text);
+  white-space:nowrap;
+  opacity:0; transition: opacity .3s;
+  pointer-events:none;
+}
+#toast.show { opacity:1; }
+
+/* 高德地图暗色覆盖 (让控件融入主题) */
+.amap-logo, .amap-copyright { opacity:.3 !important;}
+
+/* ═══════════════════════════════════════════════════════════
+ *  📱 手机端响应式适配 (屏幕宽度 < 768px)
+ * ═══════════════════════════════════════════════════════════ */
+@media (max-width: 768px) {
+
+  /* ── 顶栏：缩小、隐藏次要信息 ── */
+  #topbar {
+    height: 44px;
+    padding: 0 10px;
+    gap: 8px;
+  }
+  .logo { font-size: 14px; letter-spacing: 1.5px; }
+  .topbar-chip { font-size: 9px; letter-spacing: 1px; }
+  /* 隐藏不那么重要的：合宙Air780EG芯片名 */
+  #topbar .topbar-chip:first-of-type { display: none; }
+  #topbar .topbar-divider:nth-of-type(1) { display: none; }
+  .topbar-right { gap: 8px; }
+  #clock { font-size: 11px; }
+
+  /* ── 主体：垂直布局 ── */
+  #main { flex-direction: column; }
+
+  /* ── 侧边栏改为底部抽屉 ── */
+  #sidebar {
+    position: fixed;
+    bottom: 0; left: 0; right: 0; top: auto;
+    width: 100%;
+    height: 50vh;            /* 默认占屏幕一半 */
+    max-height: 80vh;
+    border-right: none;
+    border-top: 1px solid var(--border);
+    border-radius: 14px 14px 0 0;
+    transform: translateY(calc(100% - 48px));  /* 默认收起，只露出顶部48px */
+    transition: transform 0.3s ease;
+    z-index: 300;
+    box-shadow: 0 -8px 30px rgba(0,0,0,0.4);
+  }
+  #sidebar.open {
+    transform: translateY(0);
+  }
+
+  /* 抽屉顶部把手 */
+  #sidebar::before {
+    content: '';
+    position: absolute;
+    top: 8px; left: 50%;
+    transform: translateX(-50%);
+    width: 40px; height: 4px;
+    background: var(--muted);
+    border-radius: 2px;
+    opacity: 0.5;
+  }
+
+  /* 抽屉顶部点击区域（用伪元素增加触感） */
+  .drawer-handle {
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 32px;
+    cursor: pointer;
+    z-index: 1;
+  }
+
+  .sec { padding: 10px 12px 8px; }
+  .sec-title { font-size: 9px; margin-bottom: 6px; }
+  .sec:first-child { padding-top: 30px; }  /* 给抽屉把手让出空间 */
+
+  .device-card { padding: 8px 10px; }
+  .dc-name { font-size: 12px; }
+  .dc-imei { font-size: 9px; }
+  .dc-icon { width: 26px; height: 26px; font-size: 13px; }
+
+  /* 时间范围按钮缩小 */
+  .rpill { padding: 4px 0; font-size: 10px; }
+
+  /* 统计卡片缩小 */
+  .stat-box { padding: 6px 8px; }
+  .stat-box .val { font-size: 17px; }
+  .stat-box .lbl { font-size: 9px; }
+
+  /* 轨迹列表 */
+  #trackList { padding: 6px 12px; }
+  .ttime { font-size: 11px; }
+  .tcoord { font-size: 9px; }
+  .tspeed { font-size: 9px; }
+
+  /* ── 地图：占满剩余空间 ── */
+  #mapWrap { flex: 1; height: calc(100vh - 44px); }
+
+  /* ── 地图覆盖层调整 ── */
+  /* 顶部模式切换：缩小 */
+  #mapCtrl {
+    top: 8px; padding: 3px 4px;
+  }
+  .mctrl-btn {
+    padding: 4px 8px; font-size: 10px;
+  }
+
+  /* 右上角状态：缩小 */
+  #mapStatus {
+    top: 8px; right: 8px;
+    padding: 4px 8px;
+    font-size: 9px;
+    gap: 5px;
+  }
+  #mapStatus span:nth-of-type(1) { display: none; } /* 隐藏"实时连接"文字 */
+
+  /* 速度计：移到右上 */
+  #speedoWrap {
+    right: 8px;
+    bottom: auto;
+    top: 50px;
+    min-width: 70px;
+    padding: 6px 10px;
+  }
+  #speedVal { font-size: 24px; }
+  .speed-unit { font-size: 8px; }
+
+  /* 坐标条：缩小 */
+  #coordBar {
+    left: 8px;
+    bottom: auto;
+    top: 50px;
+    padding: 4px 8px;
+    font-size: 9px;
+    max-width: calc(60% - 16px);
+    line-height: 1.4;
+  }
+
+  /* 工具按钮：移到地图右下，避开抽屉 */
+  #mapTools {
+    right: 8px;
+    bottom: 60px;        /* 高于抽屉48px收起态 */
+    flex-direction: row;
+    gap: 4px;
+  }
+  .tool-btn { width: 30px; height: 30px; font-size: 12px; }
+
+  /* Toast: 调整位置避开抽屉 */
+  #toast {
+    bottom: 70px;
+    font-size: 11px;
+    max-width: 80vw;
+    text-align: center;
+  }
+
+  /* 弹窗：手机上撑满 */
+  #renameDialog > div, #clearDialog > div {
+    width: calc(100vw - 32px) !important;
+    max-width: 360px;
+  }
+
+  /* 抽屉打开时遮罩 */
+  #sidebarBackdrop {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.4);
+    z-index: 250;
+  }
+  #sidebarBackdrop.show { display: block; }
+}
+
+/* 极小屏（< 380px）继续优化 */
+@media (max-width: 380px) {
+  .logo { font-size: 12px; letter-spacing: 1px; }
+  .stats-grid { grid-template-columns: 1fr 1fr; gap: 4px; }
+  .stat-box .val { font-size: 15px; }
+}
+</style>
+</head>
+<body>
+
+<!-- ── 顶栏 ────────────────────────────────────────────── -->
+<div id="topbar">
+  <div class="logo">
+    <div class="live-dot"></div>
+    GPS TRACKER
+  </div>
+  <div class="topbar-divider"></div>
+  <div class="topbar-chip">合宙 Air780EG</div>
+
+  <div class="topbar-right">
+    <div class="signal-indicator" id="signalBar">
+      <span class="on"></span>
+      <span class="on"></span>
+      <span class="on"></span>
+      <span></span>
+    </div>
+    <div class="topbar-chip" id="signalText">4G · --dBm</div>
+    <div class="topbar-divider"></div>
+    <div id="clock">--:--:--</div>
+    <div class="topbar-divider"></div>
+    <div class="logout-btn" onclick="doLogout()" title="登出">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
+        <polyline points="16 17 21 12 16 7"/>
+        <line x1="21" y1="12" x2="9" y2="12"/>
+      </svg>
+    </div>
+  </div>
+</div>
+
+<style>
+.logout-btn {
+  width: 28px; height: 28px;
+  display: flex; align-items: center; justify-content: center;
+  border-radius: 4px;
+  color: var(--muted);
+  cursor: pointer;
+  transition: all .2s;
+}
+.logout-btn:hover {
+  background: rgba(255,95,46,0.1);
+  color: var(--accent2);
+}
+</style>
+
+<!-- ── 主体 ──────────────────────────────────────────────── -->
+<div id="main">
+
+  <!-- 左侧边栏 -->
+  <!-- 抽屉遮罩（仅手机端用） -->
+  <div id="sidebarBackdrop" onclick="closeSidebar()"></div>
+
+  <div id="sidebar">
+    <!-- 抽屉把手区（仅手机端响应点击） -->
+    <div class="drawer-handle" onclick="toggleSidebar()"></div>
+
+    <!-- 设备列表 -->
+    <div class="sec">
+      <div class="sec-title">设备列表</div>
+      <div id="deviceList">
+        <div class="empty-state">
+          <div class="empty-icon">📡</div>
+          等待设备上线...
+        </div>
+      </div>
+    </div>
+
+    <!-- 时间范围 -->
+    <div class="sec">
+      <div class="sec-title">时间范围</div>
+      <div class="range-pills">
+        <div class="rpill" onclick="setRange(this,'1h')">1H</div>
+        <div class="rpill active" onclick="setRange(this,'6h')">6H</div>
+        <div class="rpill" onclick="setRange(this,'24h')">24H</div>
+        <div class="rpill" onclick="setRange(this,'7d')">7D</div>
+      </div>
+    </div>
+
+    <!-- 统计 -->
+    <div class="sec">
+      <div class="sec-title">今日统计</div>
+      <div class="stats-grid">
+        <div class="stat-box">
+          <div class="val" id="statDist">--</div>
+          <div class="lbl">里程 km</div>
+        </div>
+        <div class="stat-box">
+          <div class="val orange" id="statMaxSpd">--</div>
+          <div class="lbl">最高速度 km/h</div>
+        </div>
+        <div class="stat-box">
+          <div class="val green" id="statDur">--</div>
+          <div class="lbl">时长</div>
+        </div>
+        <div class="stat-box">
+          <div class="val yellow" id="statPts">0</div>
+          <div class="lbl">上报点数</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 轨迹列表 -->
+    <div class="sec-title" style="padding:10px 14px 0;font-family:'Rajdhani',sans-serif;font-size:10px;letter-spacing:2.5px;color:var(--muted);text-transform:uppercase;flex-shrink:0;">轨迹记录</div>
+    <div id="trackList">
+      <div class="empty-state">
+        <div class="empty-icon">🗺️</div>
+        暂无轨迹数据<br>选择设备后自动加载
+      </div>
+    </div>
+  </div>
+
+  <!-- 地图 -->
+  <div id="mapWrap">
+    <div id="amap"></div>
+
+    <!-- 顶部模式切换 -->
+    <div class="map-overlay interactive" id="mapCtrl">
+      <button class="mctrl-btn active" onclick="setMapMode(this,'track')">轨迹回放</button>
+      <button class="mctrl-btn" onclick="setMapMode(this,'realtime')">实时跟踪</button>
+      <button class="mctrl-btn" onclick="setMapMode(this,'heatmap')">密度热图</button>
+    </div>
+
+    <!-- 状态指示 -->
+    <div class="map-overlay interactive" id="mapStatus">
+      <div class="ws-dot" id="wsDot"></div>
+      <span id="wsText">未连接</span>
+      <span style="color:var(--border)">|</span>
+      <span id="lastUpdate">--</span>
+    </div>
+
+    <!-- 速度仪 -->
+    <div class="map-overlay interactive" id="speedoWrap">
+      <div id="speedVal">--</div>
+      <div class="speed-unit">KM / H</div>
+      <div class="speed-gauge">
+        <div class="speed-gauge-fill" id="speedGauge"></div>
+      </div>
+    </div>
+
+    <!-- 坐标条 -->
+    <div class="map-overlay interactive" id="coordBar">
+      <span id="coordLat">--.-</span>°N &nbsp;
+      <span id="coordLon">--.-</span>°E &nbsp;|&nbsp;
+      海拔 <span id="coordAlt">--</span>m &nbsp;|&nbsp;
+      卫星 <span id="coordSats" title="格式: 定位中/可见">--</span>
+    </div>
+
+    <!-- 工具按钮 -->
+    <div class="map-overlay interactive" id="mapTools">
+      <div class="tool-btn" title="放大" onclick="mapZoom(1)">＋</div>
+      <div class="tool-btn" title="缩小" onclick="mapZoom(-1)">－</div>
+      <div class="tool-btn" title="定位到设备" onclick="flyToDevice()">◎</div>
+      <div class="tool-btn" title="导出轨迹KML" onclick="exportTrack()">↓</div>
+      <div class="tool-btn" title="清空数据" onclick="openClearDialog()" style="color:#ff5f2e;border-color:rgba(255,95,46,0.3)">✕</div>
+    </div>
+
+    <!-- Toast -->
+    <div class="map-overlay" id="toast"></div>
+
+    <!-- 修改名称弹窗 -->
+    <div id="renameDialog" style="display:none;position:absolute;inset:0;z-index:500;background:rgba(0,0,0,0.6);align-items:center;justify-content:center;">
+      <div style="background:var(--panel);border:1px solid var(--border);border-radius:8px;padding:24px;width:340px;box-shadow:0 8px 32px rgba(0,0,0,0.5);">
+        <div style="font-family:'Rajdhani',sans-serif;font-size:16px;letter-spacing:2px;color:var(--accent);margin-bottom:14px;">✎ 修改设备名称</div>
+        <div style="font-size:11px;color:var(--muted);margin-bottom:6px;letter-spacing:1px;">IMEI: <span id="renameImei">--</span></div>
+        <input type="text" id="renameInput" maxlength="32" placeholder="输入设备名称（多32个字符）"
+               style="width:100%;padding:10px 12px;background:var(--panel2);border:1px solid var(--border);border-radius:5px;color:var(--text);font-size:13px;font-family:inherit;outline:none;margin-bottom:14px;"
+               onkeydown="if(event.key==='Enter')doRename()" />
+        <div style="display:flex;gap:8px;">
+          <button class="clear-opt" onclick="doRename()" style="flex:1;text-align:center;color:var(--accent);border-color:rgba(0,200,255,0.3);">确认</button>
+          <button class="clear-opt" onclick="closeRenameDialog()" style="flex:1;text-align:center;color:var(--muted);">取消</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 清空数据弹窗 -->
+    <div id="clearDialog" style="display:none;position:absolute;inset:0;z-index:500;background:rgba(0,0,0,0.6);align-items:center;justify-content:center;">
+      <div style="background:var(--panel);border:1px solid var(--border);border-radius:8px;padding:24px;width:340px;box-shadow:0 8px 32px rgba(0,0,0,0.5);">
+        <div style="font-family:'Rajdhani',sans-serif;font-size:16px;letter-spacing:2px;color:var(--accent2);margin-bottom:14px;">⚠ 清空数据</div>
+        <div style="font-size:12px;color:var(--muted);line-height:1.7;margin-bottom:16px;">
+          选择要执行的清除操作，此操作不可恢复！
+        </div>
+        <button class="clear-opt" onclick="doClear('keep1h')">仅保留最近1小时，其余删除</button>
+        <button class="clear-opt" onclick="doClear('keep24h')">仅保留最近24小时，其余删除</button>
+        <button class="clear-opt" onclick="doClear('all')" style="color:var(--accent2);border-color:rgba(255,95,46,0.4);">清空当前设备全部轨迹</button>
+        <button class="clear-opt" onclick="doClear('every')" style="color:var(--accent2);border-color:rgba(255,95,46,0.4);background:rgba(255,95,46,0.05);">清空所有设备所有数据</button>
+        <button class="clear-opt" onclick="closeClearDialog()" style="margin-top:6px;color:var(--muted);">取消</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<style>
+.clear-opt {
+  display:block; width:100%;
+  padding:9px 12px; margin-bottom:6px;
+  background:var(--panel2); color:var(--text);
+  border:1px solid var(--border); border-radius:5px;
+  font-size:12px; font-family:inherit;
+  cursor:pointer; transition: all .2s;
+  text-align:left;
+}
+.clear-opt:hover { background:rgba(0,200,255,0.08); border-color:var(--accent); }
+</style>
+
+<script>
+// ============================================================
+//  配置 — 修改这里
+// ============================================================
+const CONFIG = {
+  apiBase:       '',          // 后端API地址，同域留空，跨域填 http://your-vps:3000
+  amapStyleUrl:  'amap://styles/normal', // 高德暗色主题
+  maxTrackPts:   2000,        // 地图上最多显示的轨迹点数
+  maxSpeed:      140,         // 速度表满量程
+  defaultCenter: [116.397428, 39.90923], // 默认地图中心（北京）
+  defaultZoom:   13,
+};
+
+// ============================================================
+//  状态
+// ============================================================
+const state = {
+  devices:       {},          // { imei: { name, last_lat, last_lon, last_speed, last_seen } }
+  activeImei:    null,
+  trackPoints:   [],          // 当前加载的轨迹点
+  range:         '6h',
+  mapMode:       'track',
+  socket:        null,
+  map:           null,
+  polyline:      null,        // 轨迹折线
+  heatmap:       null,
+  cursorMarker:  null,        // 当前位置标记
+  startMarker:   null,
+  endMarker:     null,
+};
+
+// ============================================================
+//  时钟
+// ============================================================
+setInterval(() => {
+  document.getElementById('clock').textContent =
+    new Date().toTimeString().slice(0, 8);
+}, 1000);
+
+// ============================================================
+//  高德地图初始化
+// ============================================================
+function initMap() {
+  state.map = new AMap.Map('amap', {
+    zoom:        CONFIG.defaultZoom,
+    center:      CONFIG.defaultCenter,
+    mapStyle:    CONFIG.amapStyleUrl,
+    showLabel:   true,
+    features:    ['bg','road','building','point'],
+  });
+
+  // 比例尺 + 工具条
+  state.map.addControl(new AMap.Scale({ position:'LB' }));
+
+  console.log('✅ 高德地图初始化完成');
+}
+
+// ============================================================
+//  Socket.IO — 实时接收GPS数据
+// ============================================================
+function initSocket() {
+  const url = CONFIG.apiBase || window.location.origin;
+  state.socket = io(url, { transports: ['websocket', 'polling'] });
+
+  state.socket.on('connect', () => {
+    console.log('✅ WebSocket 已连接');
+    document.getElementById('wsDot').classList.add('connected');
+    document.getElementById('wsText').textContent = '实时连接';
+    showToast('✅ 已连接服务器');
+  });
+
+  state.socket.on('disconnect', () => {
+    document.getElementById('wsDot').classList.remove('connected');
+    document.getElementById('wsText').textContent = '连接断开';
+    showToast('⚠️ 服务器连接断开');
+  });
+
+  // 收到实时GPS推送
+  state.socket.on('gps_update', (data) => {
+    handleRealtimeGps(data);
+  });
+
+  // 收到设备在线/离线状态变更
+  state.socket.on('device_status', (data) => {
+    if (!state.devices[data.imei]) state.devices[data.imei] = { imei: data.imei, name: '' };
+    state.devices[data.imei]._online = data.online;
+    state.devices[data.imei]._lastStatusTs = data.ts;
+    renderDeviceList();
+    if (!data.online) {
+      showToast('⚠️ 设备 ' + data.imei.slice(-4) + ' 已离线');
+    }
+  });
+}
+
+// ============================================================
+//  REST API — 获取设备列表
+// ============================================================
+async function loadDevices() {
+  try {
+    const res  = await fetch(CONFIG.apiBase + '/api/devices');
+    const json = await res.json();
+    if (!json.ok) return;
+
+    json.devices.forEach(d => { state.devices[d.imei] = d; });
+    renderDeviceList();
+
+    // 自动选中第一个在线设备
+    const online = json.devices.find(d => d.last_seen &&
+      (Date.now() - new Date(d.last_seen).getTime()) < 5 * 60 * 1000);
+    if (online) selectDevice(online.imei);
+
+  } catch (e) {
+    console.warn('loadDevices 失败（后端未连接，使用模拟数据）:', e.message);
+    //loadMockData(); // 开发调试用：后端未运行时显示模拟数据
+  }
+}
+
+// ============================================================
+//  REST API — 加载轨迹
+// ============================================================
+async function loadTrack(imei, range) {
+  const now   = new Date();
+  const start = new Date(now.getTime() - rangeToMs(range));
+
+  try {
+    const res  = await fetch(
+      `${CONFIG.apiBase}/api/track/${imei}?start=${start.toISOString()}&end=${now.toISOString()}&limit=2000`
+    );
+    const json = await res.json();
+    if (!json.ok) return;
+
+    state.trackPoints = json.points;
+    renderTrack();
+    renderTrackList();
+    updateStats();
+
+  } catch (e) {
+    console.warn('loadTrack 失败:', e.message);
+  }
+}
+
+// ============================================================
+//  REST API — 加载今日统计
+// ============================================================
+async function loadStats(imei) {
+  try {
+    const res  = await fetch(`${CONFIG.apiBase}/api/stats/${imei}`);
+    const json = await res.json();
+    if (!json.ok || !json.stats) return;
+    const s = json.stats;
+    document.getElementById('statPts').textContent    = s.point_count ?? '--';
+    document.getElementById('statMaxSpd').textContent = s.max_speed   ?? '--';
+    document.getElementById('statDur').textContent    = formatDuration(s.first_ts, s.last_ts);
+  } catch(e) {}
+}
+
+// ============================================================
+//  地图 — 渲染轨迹
+// ============================================================
+function renderTrack() {
+  if (!state.map) return;
+  clearMapLayers();
+
+  const pts = state.trackPoints;
+  if (!pts || pts.length === 0) return;
+
+  // 路径点
+  const path = pts.map(p => new AMap.LngLat(p.lon, p.lat));
+
+  // 轨迹折线
+  state.polyline = new AMap.Polyline({
+    path,
+    strokeColor:   '#00c8ff',
+    strokeWeight:  4,
+    strokeOpacity: 0.9,
+    strokeStyle:   'solid',
+    lineJoin:      'round',
+    lineCap:       'round',
+    zIndex:        50,
+    showDir:       true,  // 显示行驶方向箭头
+  });
+  state.map.add(state.polyline);
+
+  // 起点标记
+  state.startMarker = new AMap.Marker({
+    position: path[0],
+    content:  createMarkerHtml('S', '#00f09d'),
+    offset:   new AMap.Pixel(-14, -14),
+    zIndex:   100,
+  });
+
+  // 终点（最新位置）标记
+  const lastPt = pts[pts.length - 1];
+  state.endMarker = new AMap.Marker({
+    position: [lastPt.lon, lastPt.lat],
+    content:  createMarkerHtml('E', '#ff5f2e'),
+    offset:   new AMap.Pixel(-14, -14),
+    zIndex:   100,
+  });
+
+  // 当前位置脉冲光标
+  state.cursorMarker = new AMap.Marker({
+    position: [lastPt.lon, lastPt.lat],
+    content:  createCursorHtml(lastPt.course || 0),
+    offset:   new AMap.Pixel(-20, -20),
+    zIndex:   200,
+  });
+
+  state.map.add([state.startMarker, state.endMarker, state.cursorMarker]);
+  state.map.setFitView([state.polyline]);
+
+  // 更新速度仪和坐标
+  updateSpeedometer(lastPt.speed);
+  updateCoordBar(lastPt);
+}
+
+// ============================================================
+//  地图 — 热力图
+// ============================================================
+function renderHeatmap() {
+  if (!state.map || !state.trackPoints.length) return;
+  clearMapLayers();
+
+  AMap.plugin('AMap.HeatMap', () => {
+    state.heatmap = new AMap.HeatMap(state.map, {
+      radius: 20,
+      opacity: [0, 0.85],
+      gradient: { 0:'#001aff', 0.5:'#00c8ff', 1:'#ff5f2e' },
+    });
+    const dataset = state.trackPoints.map(p => ({
+      lng: p.lon, lat: p.lat, count: (p.speed || 1)
+    }));
+    state.heatmap.setDataSet({ data: dataset, max: 100 });
+    state.map.setFitView();
+  });
+}
+
+// ============================================================
+//  实时GPS更新处理
+// ============================================================
+function handleRealtimeGps(data) {
+  const { imei, lat, lon, speed, course, alt, sats, sats_view, csq, ts } = data;
+
+  // 更新设备列表中的状态
+  if (!state.devices[imei]) state.devices[imei] = { imei, name: '' };
+  Object.assign(state.devices[imei], {
+    last_lat: lat, last_lon: lon, last_speed: speed,
+    last_sats: sats,
+    last_sats_view: sats_view,
+    last_hdop: data.hdop,
+    last_csq: csq,
+    last_seen: new Date()
+  });
+  renderDeviceList();
+
+  // 仅当前选中设备才更新顶栏信号强度
+  if (imei === state.activeImei) updateSignal(csq);
+
+  // 如果是当前选中设备
+  if (imei !== state.activeImei) return;
+
+  // 追加轨迹点
+  const newPt = { lat, lon, speed, course, ts };
+  state.trackPoints.push(newPt);
+  if (state.trackPoints.length > CONFIG.maxTrackPts) state.trackPoints.shift();
+
+  // 更新地图
+  if (state.mapMode === 'realtime' || state.mapMode === 'track') {
+    // 更新折线
+    if (state.polyline) {
+      const path = state.polyline.getPath();
+      path.push(new AMap.LngLat(lon, lat));
+      state.polyline.setPath(path);
+    }
+    // 移动光标
+    if (state.cursorMarker) {
+      state.cursorMarker.setPosition([lon, lat]);
+      state.cursorMarker.setContent(createCursorHtml(course || 0));
+    }
+    // 实时跟踪模式自动移动地图中心
+    if (state.mapMode === 'realtime') {
+      state.map.setCenter([lon, lat]);
+    }
+    // 更新终点标记
+    if (state.endMarker) state.endMarker.setPosition([lon, lat]);
+  }
+
+  // 更新侧栏轨迹列表（只更新最新一条）
+  prependTrackItem(newPt);
+
+  // 更新速度仪 / 坐标
+  updateSpeedometer(speed);
+  updateCoordBar({ lat, lon, alt: data.alt, sats: data.sats, sats_view: data.sats_view });
+
+  // 更新最后更新时间
+  document.getElementById('lastUpdate').textContent =
+    '更新 ' + new Date().toTimeString().slice(0, 8);
+
+  // 更新点数
+  const cur = parseInt(document.getElementById('statPts').textContent) || 0;
+  document.getElementById('statPts').textContent = cur + 1;
+}
+
+// ============================================================
+//  UI 渲染
+// ============================================================
+function renderDeviceList() {
+  const list  = document.getElementById('deviceList');
+  const devs  = Object.values(state.devices);
+  if (devs.length === 0) return;
+
+  list.innerHTML = devs.map(d => {
+    // 优先使用MQTT遗言的状态(_online)，没有则按最近5分钟内有数据判断
+    let isOnline;
+    if (d._online !== undefined) {
+      isOnline = d._online;
+    } else {
+      isOnline = d.last_seen &&
+        (Date.now() - new Date(d.last_seen).getTime()) < 5 * 60 * 1000;
+    }
+    const active = d.imei === state.activeImei ? 'active' : '';
+    return `
+    <div class="device-card ${active}" onclick="selectDevice('${d.imei}')">
+      <div class="dc-head">
+        <div class="dc-icon">🚗</div>
+        <div style="flex:1;min-width:0">
+          <div class="dc-name">
+            <span>${d.name || '设备 ' + d.imei.slice(-4)}</span>
+            <span class="rename-btn" data-imei="${d.imei}" data-name="${(d.name||'').replace(/"/g,'&quot;')}" title="修改名称">✎</span>
+          </div>
+          <div class="dc-imei">${formatImei(d.imei)}</div>
+        </div>
+        <div class="dc-badge ${isOnline ? 'badge-on' : 'badge-off'}">${isOnline ? '在线' : '离线'}</div>
+      </div>
+      ${isOnline ? `
+      <div class="dc-metrics">
+        <div class="dcm"><div class="dcm-val">${Math.round(d.last_speed||0)}</div><div class="dcm-lbl">km/h</div></div>
+        <div class="dcm"><div class="dcm-val" style="color:var(--green)">${d.last_sats||'--'}</div><div class="dcm-lbl">卫星</div></div>
+        <div class="dcm"><div class="dcm-val" style="color:var(--accent2)">${d.last_hdop ? Number(d.last_hdop).toFixed(1) : '--'}</div><div class="dcm-lbl">HDOP</div></div>
+      </div>` : ''}
+    </div>`;
+  }).join('');
+
+  // 绑定重命名按钮的点击事件（用事件委托，避免inline onclick的引号转义问题）
+  list.querySelectorAll('.rename-btn').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      e.preventDefault();
+      const imei = btn.dataset.imei;
+      const name = btn.dataset.name || '';
+      openRenameDialog(imei, name);
+    });
+  });
+}
+
+function renderTrackList() {
+  const list = document.getElementById('trackList');
+  const pts  = [...state.trackPoints].reverse().slice(0, 80);
+
+  if (pts.length === 0) {
+    list.innerHTML = '<div class="empty-state"><div class="empty-icon">📍</div>该时段暂无轨迹</div>';
+    return;
+  }
+
+  list.innerHTML = pts.map((p, i) => {
+    const isStart = i === pts.length - 1;
+    const isEnd   = i === 0;
+    const dotClass = isStart ? 'start' : isEnd ? 'end' : '';
+    const timeStr  = new Date(p.ts * 1000).toLocaleTimeString('zh-CN');
+    return `
+    <div class="titem" onclick="flyTo(${p.lat},${p.lon})">
+      <div class="tnode">
+        <div class="tdot ${dotClass}"></div>
+        ${!isStart ? '<div class="tseg"></div>' : ''}
+      </div>
+      <div class="tinfo">
+        <div class="ttime">${timeStr}${isEnd ? ' <span style="font-size:9px;background:rgba(255,95,46,0.1);padding:1px 5px;border-radius:3px;border:1px solid rgba(255,95,46,0.3);">最新</span>' : ''}${isStart ? ' <span style="font-size:9px;background:rgba(0,240,157,0.1);padding:1px 5px;border-radius:3px;border:1px solid rgba(0,240,157,0.3);">起点</span>' : ''}</div>
+        <div class="tcoord">${p.lat.toFixed(5)}°N &nbsp;${p.lon.toFixed(5)}°E</div>
+        <div class="tspeed">▶ ${Math.round(p.speed||0)} km/h &nbsp;·&nbsp; 航向 ${Math.round(p.course||0)}°</div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function prependTrackItem(pt) {
+  const list = document.getElementById('trackList');
+  // 移除空状态
+  const empty = list.querySelector('.empty-state');
+  if (empty) empty.remove();
+
+  const timeStr = new Date(pt.ts * 1000).toLocaleTimeString('zh-CN');
+  const div = document.createElement('div');
+  div.className = 'titem';
+  div.onclick = () => flyTo(pt.lat, pt.lon);
+  div.innerHTML = `
+    <div class="tnode"><div class="tdot end"></div><div class="tseg"></div></div>
+    <div class="tinfo">
+      <div class="ttime">${timeStr} <span style="font-size:9px;background:rgba(255,95,46,0.1);padding:1px 5px;border-radius:3px;border:1px solid rgba(255,95,46,0.3);">最新</span></div>
+      <div class="tcoord">${pt.lat.toFixed(5)}°N &nbsp;${pt.lon.toFixed(5)}°E</div>
+      <div class="tspeed">▶ ${Math.round(pt.speed||0)} km/h &nbsp;·&nbsp; 航向 ${Math.round(pt.course||0)}°</div>
+    </div>`;
+  list.prepend(div);
+
+  // 更新原来的"最新"标签
+  const tags = list.querySelectorAll('.titem:nth-child(2) .ttime span');
+  tags.forEach(t => { if (t.textContent === '最新') t.remove(); });
+}
+
+function updateStats() {
+  const pts = state.trackPoints;
+  if (!pts.length) return;
+  document.getElementById('statPts').textContent = pts.length;
+  const maxSpd = Math.max(...pts.map(p => p.speed || 0));
+  document.getElementById('statMaxSpd').textContent = Math.round(maxSpd);
+  document.getElementById('statDur').textContent =
+    formatDuration(pts[0].ts, pts[pts.length - 1].ts);
+  // 里程：累加相邻点距离
+  let dist = 0;
+  for (let i = 1; i < pts.length; i++) {
+    dist += haversine(pts[i-1].lat, pts[i-1].lon, pts[i].lat, pts[i].lon);
+  }
+  document.getElementById('statDist').textContent = dist.toFixed(1);
+}
+
+function updateSpeedometer(speed) {
+  const v = Math.round(speed || 0);
+  const el = document.getElementById('speedVal');
+  el.textContent = v;
+  el.style.color = v > 100 ? 'var(--accent2)' : v > 60 ? 'var(--yellow)' : 'var(--accent)';
+  document.getElementById('speedGauge').style.width =
+    Math.min(v / CONFIG.maxSpeed * 100, 100) + '%';
+}
+
+function updateCoordBar(pt) {
+  if (!pt) return;
+  document.getElementById('coordLat').textContent  = pt.lat?.toFixed(5) ?? '--';
+  document.getElementById('coordLon').textContent  = pt.lon?.toFixed(5) ?? '--';
+  document.getElementById('coordAlt').textContent  = Math.round(pt.alt  ?? 0);
+
+  // 卫星显示格式: "用于定位/可见" (如 "8/13")
+  const used = pt.sats ?? '-';
+  const view = pt.sats_view ?? '-';
+  const satEl = document.getElementById('coordSats');
+  if (pt.sats_view != null && pt.sats_view > 0) {
+    satEl.textContent = used + '/' + view;
+    satEl.title = `定位中: ${used}颗 / 可见: ${view}颗`;
+  } else {
+    satEl.textContent = used;
+    satEl.title = `定位中: ${used}颗`;
+  }
+}
+
+// CSQ 0~31 → 信号格数(0~4) + 换算为近似dBm显示
+// CSQ 99 表示未知，0表示无信号
+// 近似换算: dBm = CSQ * 2 - 113
+function updateSignal(csq) {
+  if (csq == null) return;
+  const bars = document.querySelectorAll('#signalBar span');
+  const textEl = document.getElementById('signalText');
+
+  let level = 0;  // 0~4格
+  let label = '无信号';
+
+  if (csq === 99 || csq === 0) {
+    level = 0;
+    label = '无信号';
+  } else if (csq <= 6) {
+    level = 1;
+    label = '4G · 弱';
+  } else if (csq <= 12) {
+    level = 2;
+    label = `4G · ${csq * 2 - 113}dBm`;
+  } else if (csq <= 18) {
+    level = 3;
+    label = `4G · ${csq * 2 - 113}dBm`;
+  } else {
+    level = 4;
+    label = `4G · ${csq * 2 - 113}dBm`;
+  }
+
+  bars.forEach((bar, i) => {
+    bar.classList.toggle('on', i < level);
+  });
+  textEl.textContent = label;
+}
+
+// ============================================================
+//  Marker HTML生成
+// ============================================================
+function createMarkerHtml(label, color) {
+  return `<div style="
+    width:28px;height:28px;border-radius:50%;
+    background:${color};border:2px solid #fff;
+    display:flex;align-items:center;justify-content:center;
+    color:#000;font-weight:700;font-size:11px;
+    font-family:'Rajdhani',sans-serif;letter-spacing:0;
+    box-shadow:0 0 12px ${color};
+  ">${label}</div>`;
+}
+
+function createCursorHtml(course) {
+  return `<div style="
+    width:40px;height:40px;
+    position:relative;display:flex;align-items:center;justify-content:center;
+  ">
+    <div style="
+      position:absolute;width:40px;height:40px;border-radius:50%;
+      border:2px solid rgba(0,200,255,0.6);
+      animation:ring 2s infinite;
+    "></div>
+    <div style="
+      position:absolute;width:40px;height:40px;border-radius:50%;
+      border:2px solid rgba(0,200,255,0.3);
+      animation:ring 2s .7s infinite;
+    "></div>
+    <div style="
+      width:14px;height:14px;background:#00c8ff;border-radius:50%;
+      border:2px solid #fff;
+      box-shadow:0 0 16px #00c8ff;
+      position:relative;z-index:1;
+    "></div>
+  </div>
+  <style>
+    @keyframes ring {
+      0%{transform:scale(.3);opacity:.8}
+      100%{transform:scale(2.2);opacity:0}
+    }
+  </style>`;
+}
+
+// ============================================================
+//  交互操作
+// ============================================================
+
+// ── 手机端抽屉控制 ──
+function toggleSidebar() {
+  const sb = document.getElementById('sidebar');
+  const bd = document.getElementById('sidebarBackdrop');
+  if (sb.classList.contains('open')) {
+    sb.classList.remove('open');
+    bd.classList.remove('show');
+  } else {
+    sb.classList.add('open');
+    bd.classList.add('show');
+  }
+}
+
+function closeSidebar() {
+  document.getElementById('sidebar').classList.remove('open');
+  document.getElementById('sidebarBackdrop').classList.remove('show');
+}
+
+function selectDevice(imei) {
+  state.activeImei = imei;
+  renderDeviceList();
+  loadTrack(imei, state.range);
+  loadStats(imei);
+  showToast('已选择设备 ' + imei.slice(-4));
+  // 手机端：选择后自动收起抽屉看地图
+  if (window.innerWidth <= 768) closeSidebar();
+}
+
+function setRange(el, range) {
+  document.querySelectorAll('.rpill').forEach(r => r.classList.remove('active'));
+  el.classList.add('active');
+  state.range = range;
+  if (state.activeImei) loadTrack(state.activeImei, range);
+}
+
+function setMapMode(el, mode) {
+  document.querySelectorAll('.mctrl-btn').forEach(b => b.classList.remove('active'));
+  el.classList.add('active');
+  state.mapMode = mode;
+  if (mode === 'heatmap') renderHeatmap();
+  else renderTrack();
+}
+
+function flyTo(lat, lon) {
+  if (!state.map) return;
+  state.map.setCenter([lon, lat]);
+  state.map.setZoom(16);
+}
+
+function flyToDevice() {
+  if (!state.activeImei || !state.devices[state.activeImei]) return;
+  const d = state.devices[state.activeImei];
+  if (d.last_lat) flyTo(d.last_lat, d.last_lon);
+}
+
+function mapZoom(delta) {
+  if (!state.map) return;
+  state.map.setZoom(state.map.getZoom() + delta);
+}
+
+function exportTrack() {
+  if (!state.trackPoints.length) { showToast('⚠️ 暂无轨迹数据'); return; }
+  const kml = generateKML(state.trackPoints, state.activeImei);
+  const blob = new Blob([kml], { type:'application/vnd.google-earth.kml+xml' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `track_${state.activeImei}_${Date.now()}.kml`;
+  a.click();
+  showToast('✅ 轨迹已导出为 KML');
+}
+
+function clearMapLayers() {
+  if (state.polyline)    { state.map.remove(state.polyline);    state.polyline    = null; }
+  if (state.startMarker) { state.map.remove(state.startMarker); state.startMarker = null; }
+  if (state.endMarker)   { state.map.remove(state.endMarker);   state.endMarker   = null; }
+  if (state.cursorMarker){ state.map.remove(state.cursorMarker);state.cursorMarker= null; }
+  if (state.heatmap)     { state.heatmap.hide(); state.heatmap = null; }
+}
+
+// ============================================================
+//  工具函数
+// ============================================================
+function showToast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  setTimeout(() => t.classList.remove('show'), 2500);
+}
+
+function rangeToMs(r) {
+  return { '1h':3600e3, '6h':6*3600e3, '24h':24*3600e3, '7d':7*24*3600e3 }[r] || 6*3600e3;
+}
+
+function formatImei(imei) {
+  return imei.replace(/(\d{6})(\d{3})(\d{3})(\d{3})/, '$1 $2 $3 $4');
+}
+
+function formatDuration(t1, t2) {
+  if (!t1 || !t2) return '--';
+  const ms = (typeof t1 === 'string' ? new Date(t2) - new Date(t1) : (t2 - t1) * 1000);
+  const h = Math.floor(ms / 3600000);
+  const m = Math.floor((ms % 3600000) / 60000);
+  return h > 0 ? `${h}h${m}m` : `${m}m`;
+}
+
+function haversine(lat1, lon1, lat2, lon2) {
+  const R = 6371, toR = Math.PI / 180;
+  const dLat = (lat2 - lat1) * toR, dLon = (lon2 - lon1) * toR;
+  const a = Math.sin(dLat/2)**2 + Math.cos(lat1*toR)*Math.cos(lat2*toR)*Math.sin(dLon/2)**2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
+function generateKML(pts, imei) {
+  const coords = pts.map(p => `${p.lon},${p.lat},${p.alt||0}`).join('\n');
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<kml xmlns="http://www.opengis.net/kml/2.2">
+<Document>
+  <name>GPS Track - ${imei}</name>
+  <Placemark>
+    <name>轨迹</name>
+    <LineString>
+      <altitudeMode>clampToGround</altitudeMode>
+      <coordinates>${coords}</coordinates>
+    </LineString>
+  </Placemark>
+</Document>
+</kml>`;
+}
+
+// ============================================================
+//  开发调试：后端未连接时加载模拟数据
+// ============================================================
+function loadMockData() {
+  const mockImei = '868488076506128';
+  state.devices[mockImei] = {
+    imei: mockImei, name: '我的车辆',
+    last_lat: 35.6880, last_lon: 139.6950,
+    last_speed: 48, last_sats: 8, hdop: 1.2,
+    last_seen: new Date(),
+  };
+  renderDeviceList();
+
+  // 生成模拟轨迹
+  const now = Math.floor(Date.now() / 1000);
+  state.trackPoints = Array.from({ length: 20 }, (_, i) => ({
+    lat:    35.6880 + i * 0.0008,
+    lon:    139.6950 + i * 0.0015,
+    speed:  30 + Math.random() * 50,
+    course: 45 + Math.random() * 20,
+    alt:    40 + Math.random() * 10,
+    sats:   8,
+    ts:     now - (20 - i) * 30,
+  }));
+  state.activeImei = mockImei;
+  renderDeviceList();
+  renderTrack();
+  renderTrackList();
+  updateStats();
+  showToast('📡 演示模式（后端未连接）');
+}
+
+// ============================================================
+//  修改设备名称
+// ============================================================
+let _renameImei = null;
+
+function openRenameDialog(imei, currentName) {
+  _renameImei = imei;
+  document.getElementById('renameImei').textContent = imei;
+  document.getElementById('renameInput').value = currentName || '';
+  document.getElementById('renameDialog').style.display = 'flex';
+  setTimeout(() => document.getElementById('renameInput').focus(), 50);
+}
+
+function closeRenameDialog() {
+  document.getElementById('renameDialog').style.display = 'none';
+  _renameImei = null;
+}
+
+async function doRename() {
+  const name = document.getElementById('renameInput').value.trim();
+  if (!_renameImei) return;
+  if (!name) { showToast('名称不能为空'); return; }
+
+  try {
+    const res = await fetch(`${CONFIG.apiBase}/api/device/${_renameImei}/name`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name })
+    });
+    const json = await res.json();
+    if (json.ok) {
+      if (state.devices[_renameImei]) state.devices[_renameImei].name = name;
+      renderDeviceList();
+      showToast('✅ 设备名称已修改');
+      closeRenameDialog();
+    } else {
+      showToast('❌ 修改失败: ' + (json.error || ''));
+    }
+  } catch (e) {
+    showToast('❌ 请求失败: ' + e.message);
+  }
+}
+
+// ============================================================
+//  登出
+// ============================================================
+async function doLogout() {
+  if (!confirm('确定要登出吗？')) return;
+  try {
+    await fetch('/api/logout', { method: 'POST' });
+  } catch (e) {}
+  window.location.href = '/login';
+}
+
+// ============================================================
+//  清除数据功能
+// ============================================================
+function openClearDialog() {
+  document.getElementById('clearDialog').style.display = 'flex';
+}
+function closeClearDialog() {
+  document.getElementById('clearDialog').style.display = 'none';
+}
+
+async function doClear(mode) {
+  let url, msg;
+  const imei = state.activeImei;
+
+  if (mode === 'every') {
+    if (!confirm('确定要清空所有设备所有数据吗？此操作不可恢复！')) return;
+    url = CONFIG.apiBase + '/api/all';
+    msg = '全部数据';
+  } else if (mode === 'all') {
+    if (!imei) { showToast('请先选择设备'); return; }
+    if (!confirm(`确定要清空设备 ${imei.slice(-4)} 的全部轨迹吗？`)) return;
+    url = `${CONFIG.apiBase}/api/track/${imei}`;
+    msg = `设备 ${imei.slice(-4)} 的全部轨迹`;
+  } else if (mode === 'keep1h' || mode === 'keep24h') {
+    if (!imei) { showToast('请先选择设备'); return; }
+    const hours = mode === 'keep1h' ? 1 : 24;
+    url = `${CONFIG.apiBase}/api/track/${imei}/keep?hours=${hours}`;
+    msg = `保留最近${hours}小时之外的数据`;
+  } else {
+    showToast('未知操作'); return;
+  }
+
+  closeClearDialog();
+  showToast('正在清除...');
+
+  try {
+    const res = await fetch(url, { method: 'DELETE' });
+    const json = await res.json();
+    if (json.ok) {
+      showToast(`✅ 已清除 ${msg}，共 ${json.deleted} 条`);
+      // 重新加载
+      state.trackPoints = [];
+      clearMapLayers();
+      renderTrackList();
+      updateStats();
+      if (imei) {
+        loadTrack(imei, state.range);
+        loadStats(imei);
+      }
+      loadDevices();
+    } else {
+      showToast('❌ 失败: ' + json.error);
+    }
+  } catch (e) {
+    showToast('❌ 请求失败: ' + e.message);
+  }
+}
+
+// ============================================================
+//  启动
+// ============================================================
+window.onload = () => {
+  initMap();
+  initSocket();
+  loadDevices();
+  // 每60秒刷新设备列表
+  setInterval(loadDevices, 60000);
+};
+</script>
+</body>
+</html>

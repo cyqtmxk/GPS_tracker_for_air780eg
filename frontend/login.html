@@ -1,0 +1,357 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>GPS Tracker · 登录</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Rajdhani:wght@400;500;600;700&family=Noto+Sans+SC:wght@300;400;500&display=swap');
+
+:root {
+  --bg:      #090c12;
+  --panel:   #0e1220;
+  --panel2:  #141827;
+  --border:  rgba(0,200,255,0.15);
+  --accent:  #00c8ff;
+  --accent2: #ff5f2e;
+  --green:   #00f09d;
+  --text:    #dde6f0;
+  --muted:   #4e5c72;
+  --error:   #ff4d6d;
+}
+
+* { margin:0; padding:0; box-sizing:border-box; }
+
+body {
+  font-family: 'Noto Sans SC', sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  position: relative;
+}
+
+/* 全局扫描线 */
+body::after {
+  content:'';
+  position:fixed; inset:0;
+  background: repeating-linear-gradient(0deg, transparent, transparent 3px, rgba(0,0,0,0.025) 3px, rgba(0,0,0,0.025) 4px);
+  pointer-events:none;
+  z-index:9999;
+}
+
+/* 背景动态网格 */
+body::before {
+  content:'';
+  position: fixed; inset:0;
+  background:
+    linear-gradient(rgba(0,200,255,0.03) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(0,200,255,0.03) 1px, transparent 1px);
+  background-size: 50px 50px;
+  animation: gridMove 20s linear infinite;
+}
+@keyframes gridMove {
+  0% { transform: translate(0,0); }
+  100% { transform: translate(50px,50px); }
+}
+
+/* 装饰光点 */
+.bg-glow {
+  position: fixed;
+  border-radius: 50%;
+  filter: blur(80px);
+  opacity: 0.3;
+  pointer-events: none;
+}
+.bg-glow.g1 {
+  width: 400px; height: 400px;
+  background: var(--accent);
+  top: -100px; left: -100px;
+  animation: float 8s ease-in-out infinite;
+}
+.bg-glow.g2 {
+  width: 350px; height: 350px;
+  background: var(--accent2);
+  bottom: -80px; right: -80px;
+  animation: float 10s ease-in-out infinite reverse;
+}
+@keyframes float {
+  0%,100% { transform: translate(0,0); }
+  50% { transform: translate(30px,30px); }
+}
+
+/* 登录卡片 */
+.login-card {
+  position: relative;
+  width: 380px;
+  max-width: 90vw;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 36px 32px 28px;
+  z-index: 1;
+  box-shadow:
+    0 0 60px rgba(0,200,255,0.05),
+    0 8px 32px rgba(0,0,0,0.5);
+}
+.login-card::before {
+  content:'';
+  position:absolute;
+  top:0; left:0; right:0;
+  height:1px;
+  background: linear-gradient(90deg, transparent, var(--accent), transparent);
+  animation: scan 3s linear infinite;
+}
+@keyframes scan {
+  0% { opacity: 0; transform: translateY(0); }
+  50% { opacity: 1; }
+  100% { opacity: 0; transform: translateY(400px); }
+}
+
+/* Logo 区域 */
+.logo-area {
+  text-align: center;
+  margin-bottom: 28px;
+}
+.logo-icon {
+  width: 60px;
+  height: 60px;
+  margin: 0 auto 14px;
+  border: 2px solid var(--accent);
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  box-shadow: 0 0 30px rgba(0,200,255,0.4);
+}
+.logo-icon::before {
+  content:'';
+  position: absolute;
+  inset: -6px;
+  border: 1px solid var(--accent);
+  border-radius: 50%;
+  opacity: 0.3;
+  animation: pulse 2s infinite;
+}
+@keyframes pulse {
+  0%,100% { transform: scale(1); opacity: 0.3; }
+  50% { transform: scale(1.15); opacity: 0; }
+}
+.logo-dot {
+  width: 14px; height: 14px;
+  background: var(--accent);
+  border-radius: 50%;
+  box-shadow: 0 0 16px var(--accent);
+}
+
+.logo-title {
+  font-family: 'Rajdhani', sans-serif;
+  font-size: 22px;
+  font-weight: 700;
+  letter-spacing: 4px;
+  color: var(--accent);
+  text-transform: uppercase;
+  margin-bottom: 4px;
+}
+.logo-sub {
+  font-family: 'Rajdhani', sans-serif;
+  font-size: 11px;
+  letter-spacing: 2px;
+  color: var(--muted);
+}
+
+/* 表单 */
+.form-group {
+  margin-bottom: 16px;
+}
+.form-label {
+  display: block;
+  font-family: 'Rajdhani', sans-serif;
+  font-size: 11px;
+  letter-spacing: 2px;
+  color: var(--muted);
+  text-transform: uppercase;
+  margin-bottom: 6px;
+}
+.form-input {
+  width: 100%;
+  padding: 11px 14px;
+  background: var(--panel2);
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  color: var(--text);
+  font-size: 14px;
+  font-family: inherit;
+  outline: none;
+  transition: all .2s;
+}
+.form-input:focus {
+  border-color: var(--accent);
+  background: rgba(0,200,255,0.04);
+  box-shadow: 0 0 0 3px rgba(0,200,255,0.1);
+}
+
+/* 登录按钮 */
+.btn-login {
+  width: 100%;
+  padding: 12px;
+  margin-top: 8px;
+  background: linear-gradient(90deg, var(--accent), #00a8ff);
+  color: var(--bg);
+  border: none;
+  border-radius: 5px;
+  font-family: 'Rajdhani', sans-serif;
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: 3px;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: all .2s;
+  position: relative;
+  overflow: hidden;
+}
+.btn-login:hover:not(:disabled) {
+  box-shadow: 0 4px 20px rgba(0,200,255,0.4);
+  transform: translateY(-1px);
+}
+.btn-login:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+.btn-login::before {
+  content:'';
+  position:absolute;
+  top:0; left:-100%;
+  width:100%; height:100%;
+  background: linear-gradient(90deg, transparent, rgba(255,255,255,0.2), transparent);
+  transition: left .5s;
+}
+.btn-login:hover:not(:disabled)::before {
+  left: 100%;
+}
+
+/* 错误提示 */
+.error-msg {
+  display: none;
+  padding: 9px 12px;
+  margin-bottom: 14px;
+  background: rgba(255,77,109,0.1);
+  border: 1px solid rgba(255,77,109,0.3);
+  border-radius: 4px;
+  color: var(--error);
+  font-size: 12px;
+}
+.error-msg.show { display: block; animation: shake 0.3s; }
+@keyframes shake {
+  0%,100% { transform: translateX(0); }
+  25%     { transform: translateX(-4px); }
+  75%     { transform: translateX(4px); }
+}
+
+/* 底部信息 */
+.footer {
+  margin-top: 22px;
+  text-align: center;
+  font-family: 'Rajdhani', sans-serif;
+  font-size: 10px;
+  letter-spacing: 1.5px;
+  color: var(--muted);
+}
+.footer .live-dot {
+  display: inline-block;
+  width: 6px; height: 6px;
+  background: var(--green);
+  border-radius: 50%;
+  margin-right: 5px;
+  vertical-align: middle;
+  box-shadow: 0 0 6px var(--green);
+  animation: blink 2s infinite;
+}
+@keyframes blink {
+  0%,100% { opacity: 1; }
+  50% { opacity: 0.3; }
+}
+
+</style>
+</head>
+<body>
+
+<div class="bg-glow g1"></div>
+<div class="bg-glow g2"></div>
+
+<div class="login-card">
+
+  <div class="logo-area">
+    <div class="logo-icon">
+      <div class="logo-dot"></div>
+    </div>
+    <div class="logo-title">GPS TRACKER</div>
+    <div class="logo-sub">合宙 Air780EG · 实时定位</div>
+  </div>
+
+  <div class="error-msg" id="errMsg"></div>
+
+  <form id="loginForm" onsubmit="event.preventDefault(); doLogin();">
+    <div class="form-group">
+      <label class="form-label">用户名</label>
+      <input type="text" class="form-input" id="user" autocomplete="username" required autofocus>
+    </div>
+
+    <div class="form-group">
+      <label class="form-label">密码</label>
+      <input type="password" class="form-input" id="pass" autocomplete="current-password" required>
+    </div>
+
+    <button type="submit" class="btn-login" id="btnLogin">登 录 系 统</button>
+  </form>
+
+  <div class="footer">
+    <span class="live-dot"></span>
+    系统在线 · v1.0
+  </div>
+
+</div>
+
+<script>
+async function doLogin() {
+  const user = document.getElementById('user').value.trim();
+  const pass = document.getElementById('pass').value;
+  const btn  = document.getElementById('btnLogin');
+  const err  = document.getElementById('errMsg');
+
+  err.classList.remove('show');
+  btn.disabled = true;
+  btn.textContent = '验证中...';
+
+  try {
+    const res = await fetch('/api/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ user, pass })
+    });
+    const json = await res.json();
+
+    if (json.ok) {
+      btn.textContent = '登录成功';
+      window.location.href = '/';
+    } else {
+      err.textContent = '⚠ ' + (json.error || '登录失败');
+      err.classList.add('show');
+      btn.disabled = false;
+      btn.textContent = '登 录 系 统';
+    }
+  } catch (e) {
+    err.textContent = '⚠ 网络错误：' + e.message;
+    err.classList.add('show');
+    btn.disabled = false;
+    btn.textContent = '登 录 系 统';
+  }
+}
+</script>
+
+</body>
+</html>
