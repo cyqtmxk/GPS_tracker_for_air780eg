@@ -53,6 +53,7 @@ cat >> /opt/gps-tracker/backend/.env << 'EOF'
 WEB_USER=你的用户名
 WEB_PASS=你的密码
 EOF
+
 #重启服务
 
 fuser -k 3000/tcp
