@@ -21,9 +21,9 @@ pm2 startup       # 生成开机启动命令（按提示执行）
 
 第三步：配置 Nginx
 cp gps-tracker.nginx /etc/nginx/sites-available/gps-tracker \
-ln -s /etc/nginx/sites-available/gps-tracker /etc/nginx/sites-enabled/ \
-nginx -t          # 检查配置 \
-systemctl reload nginx \
+ln -s /etc/nginx/sites-available/gps-tracker /etc/nginx/sites-enabled/ 
+nginx -t          # 检查配置 
+systemctl reload nginx 
 
 第四步：更新 Air780EG 固件里的 MQTT 配置
 把 main.lua 里 CFG 的 mqtt_host、mqtt_user、mqtt_pass 改成 setup.sh 输出的值。
@@ -31,12 +31,10 @@ systemctl reload nginx \
 安装完成后，可以用以下命令验证：
 测试MQTT（需要安装mosquitto-clients）
 
-mosquitto_pub -h localhost -p 1883 -u gps_device -P 你的密码 \
-  -t "/gps/up/test123" \
-  -m '{"imei":"test123","lat":35.68,"lon":139.69,"speed":30,"ts":1714000000}'
+mosquitto_pub -h localhost -p 1883 -u gps_device -P 你的密码 -t "/gps/up/test123"  -m '{"imei":"test123","lat":35.68,"lon":139.69,"speed":30,"ts":1714000000}'
 
 #查看日志
-pm2 logs gps-tracker \
+pm2 logs gps-tracker 
 
 第五步：申请高德地图 Key
 
@@ -47,7 +45,7 @@ pm2 logs gps-tracker \
 
 第六步：部署到 VPS
 cp index.html /opt/gps-tracker/frontend/index.html \
-cp login.html /opt/gps-tracker/frontend/login.html \
+cp login.html /opt/gps-tracker/frontend/login.html 
 
 cat >> /opt/gps-tracker/backend/.env << 'EOF' \
 WEB_USER=你的用户名 \
